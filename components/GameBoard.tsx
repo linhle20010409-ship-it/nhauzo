@@ -17,7 +17,8 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
   const [votingSelection, setVotingSelection] = useState<string | null>(null);
   const [deathSelection, setDeathSelection] = useState<number | null>(null);
   const [showMinigameSelector, setShowMinigameSelector] = useState(false);
-
+  const [showOpponentSelector, setShowOpponentSelector] = useState(false);
+  const [tempOpponentId, setTempOpponentId] = useState<string | null>(null);
   // Mode Logic: Death Number
   const selectDeathNumber = async (num: number) => {
     if (deathSelection !== null) return;
