@@ -16,6 +16,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
   const isLoser = roomData.currentLoserId === userId;
   const [votingSelection, setVotingSelection] = useState<string | null>(null);
   const [deathSelection, setDeathSelection] = useState<number | null>(null);
+  const [showMinigameSelector, setShowMinigameSelector] = useState(false);
 
   // Mode Logic: Death Number
   const selectDeathNumber = async (num: number) => {
@@ -78,22 +79,32 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
     if (type === 'WHEEL') {
         await updateRoom(roomData.id, { state: GameState.SPINNING_PENALTY });
     } else {
-        // Pick random opponent for duel
-        // Fix: Explicitly cast to Player[] to avoid unknown type errors
-        const players = Object.values(roomData.players) as Player[];
-        const others = players.filter(p => p.id !== userId);
-        const opponent = others[Math.floor(Math.random() * others.length)];
-        const minigames = [MinigameType.RPS, MinigameType.FAST_HANDS, MinigameType.MEMORY];
-        const randomGame = minigames[Math.floor(Math.random() * minigames.length)];
-        
-        await updateRoom(roomData.id, { 
-            state: GameState.MINIGAME_DUEL,
-            targetOpponentId: opponent.id,
-            minigameType: randomGame
-        });
+        // Thay vì random ngay, ta mở menu cho người chơi chọn
+        setShowMinigameSelector(true);
     }
   };
 
+  // 2. Thêm hàm này ngay bên dưới handleDecision: Xử lý khi bấm chọn 1 minigame cụ thể
+  const handleSelectMinigame = async (selectedGame: MinigameType) => {
+    // Chọn đối thủ ngẫu nhiên từ những người còn lại
+    // (Fix lỗi: Ép kiểu dữ liệu để tránh lỗi TypeScript)
+    const players = Object.values(roomData.players) as Player[];
+    const others = players.filter(p => p.id !== userId);
+    
+    // Nếu chơi 1 mình (test) thì lấy chính mình, nếu đông thì lấy người khác
+    const opponent = others.length > 0 
+        ? others[Math.floor(Math.random() * others.length)] 
+        : players[0];
+
+    await updateRoom(roomData.id, { 
+        state: GameState.MINIGAME_DUEL,
+        targetOpponentId: opponent.id,
+        minigameType: selectedGame // <-- Truyền game đã chọn vào đây
+    });
+    
+    // Tắt menu sau khi chọn xong
+    setShowMinigameSelector(false);
+  };
   const backToLobby = async () => {
       if (!isHost) return;
       // Reset all game states for players
