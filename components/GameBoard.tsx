@@ -227,13 +227,22 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
             );
 
         case GameState.SPINNING_PENALTY:
-            return (
+return (
                 <div className="flex flex-col items-center gap-8 animate-in fade-in">
                     <h2 className="text-3xl font-bungee text-amber-500">Vòng quay hình phạt</h2>
+                    
+                    {/* Hiển thị thông báo ai đang quay */}
+                    {!isLoser && (
+                         <p className="text-slate-400 animate-pulse">
+                            ⏳ Đang chờ <span className="text-white font-bold">{roomData.players[roomData.currentLoserId!]?.name}</span> tự tay quay...
+                         </p>
+                    )}
+
                     <Wheel 
                         items={roomData.penalties.map((p, i) => ({ label: `${p.text} (${p.amount} ly)`, value: i.toString() }))}
                         onFinished={(idx) => {
-                            if (isHost) {
+                            // 👇 SỬA Ở ĐÂY: Nếu là Chủ phòng HOẶC Người thua thì đều gửi lệnh cập nhật được
+                            if (canSpinPenalty) {
                                 const p = roomData.penalties[parseInt(idx)];
                                 updateRoom(roomData.id, { 
                                     state: GameState.RESULT,
@@ -242,7 +251,8 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                                 });
                             }
                         }}
-                        canSpin={isHost}
+                        // 👇 SỬA Ở ĐÂY: Truyền biến đã sửa vào
+                        canSpin={canSpinPenalty} 
                     />
                 </div>
             );
