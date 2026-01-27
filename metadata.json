@@ -1,0 +1,8 @@
+{
+  "name": "Nhậu Zô - Siêu Tửu Vương",
+  "description": "Một ứng dụng game nhậu multiplayer hiện đại với vòng quay may mắn, mini-game đối kháng và các chế độ chơi kịch tính, tích hợp Firebase Realtime Database.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
