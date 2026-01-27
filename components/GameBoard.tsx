@@ -84,27 +84,32 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
         setShowMinigameSelector(true);
     }
   };
+  // 2. THÊM HÀM MỚI: Xử lý khi bấm chọn mặt gửi vàng (Chọn đối thủ)
+  const handleChooseOpponent = (opponentId: string) => {
+      setTempOpponentId(opponentId); // Lưu ID đối thủ lại
+      setShowOpponentSelector(false); // Tắt menu chọn người
+      setShowMinigameSelector(true); // Mở menu chọn game
+  };
 
-  // 2. Thêm hàm này ngay bên dưới handleDecision: Xử lý khi bấm chọn 1 minigame cụ thể
+  // 3. Sửa hàm handleSelectMinigame: Dùng ID đối thủ đã chọn để bắt đầu game
   const handleSelectMinigame = async (selectedGame: MinigameType) => {
-    // Chọn đối thủ ngẫu nhiên từ những người còn lại
-    // (Fix lỗi: Ép kiểu dữ liệu để tránh lỗi TypeScript)
-    const players = Object.values(roomData.players) as Player[];
-    const others = players.filter(p => p.id !== userId);
-    
-    // Nếu chơi 1 mình (test) thì lấy chính mình, nếu đông thì lấy người khác
-    const opponent = others.length > 0 
-        ? others[Math.floor(Math.random() * others.length)] 
-        : players[0];
+    // Nếu chưa chọn ai (lỗi logic) thì chọn random cho an toàn
+    let targetId = tempOpponentId;
+    if (!targetId) {
+        const players = Object.values(roomData.players) as Player[];
+        const others = players.filter(p => p.id !== userId);
+        targetId = others[Math.floor(Math.random() * others.length)].id;
+    }
 
     await updateRoom(roomData.id, { 
         state: GameState.MINIGAME_DUEL,
-        targetOpponentId: opponent.id,
-        minigameType: selectedGame // <-- Truyền game đã chọn vào đây
+        targetOpponentId: targetId, // <--- Dùng người mình vừa chọn
+        minigameType: selectedGame
     });
     
-    // Tắt menu sau khi chọn xong
+    // Reset lại các menu
     setShowMinigameSelector(false);
+    setTempOpponentId(null);
   };
   const backToLobby = async () => {
       if (!isHost) return;
@@ -245,81 +250,79 @@ return (
                     
                     {/* Hiển thị thông báo ai đang quay */}
                     {isLoser ? (
-                        // Nếu đã bấm nút "Tử chiến" -> Hiện danh sách game để chọn
-                        showMinigameSelector ? (
-                            <div className="flex flex-col gap-4 w-full max-w-md animate-in slide-in-from-right">
-                                <h3 className="text-xl font-bold text-indigo-300 text-center mb-2">CHỌN MÔN THI ĐẤU</h3>
-                                
-                                <button 
-                                    onClick={() => handleSelectMinigame(MinigameType.RPS)}
-                                    className="p-4 bg-slate-800 hover:bg-indigo-600 border border-indigo-500/50 rounded-2xl flex items-center gap-4 transition-all"
-                                >
-                                    <span className="text-3xl">✌️</span>
-                                    <div className="text-left">
-                                        <div className="font-bold text-white">Oẳn Tù Tì</div>
-                                        <div className="text-xs text-slate-400">Đấu trí căng - May rủi 50/50</div>
-                                    </div>
-                                </button>
-
-                                <button 
-                                    onClick={() => handleSelectMinigame(MinigameType.FAST_HANDS)}
-                                    className="p-4 bg-slate-800 hover:bg-rose-600 border border-rose-500/50 rounded-2xl flex items-center gap-4 transition-all"
-                                >
-                                    <span className="text-3xl">⚡</span>
-                                    <div className="text-left">
-                                        <div className="font-bold text-white">Nhanh Tay Lẹ Mắt</div>
-                                        <div className="text-xs text-slate-400">Ai bấm nhanh hơn người đó thắng</div>
-                                    </div>
-                                </button>
-
-                                <button 
-                                    onClick={() => handleSelectMinigame(MinigameType.MEMORY)}
-                                    className="p-4 bg-slate-800 hover:bg-emerald-600 border border-emerald-500/50 rounded-2xl flex items-center gap-4 transition-all"
-                                >
-                                    <span className="text-3xl">🧠</span>
-                                    <div className="text-left">
-                                        <div className="font-bold text-white">Siêu Trí Nhớ</div>
-                                        <div className="text-xs text-slate-400">Ghi nhớ vị trí các cặp thẻ</div>
-                                    </div>
-                                </button>
-
-                                <button 
-                                    onClick={() => setShowMinigameSelector(false)}
-                                    className="mt-2 text-slate-500 hover:text-white text-sm underline text-center"
-                                >
-                                    Quay lại chọn hình phạt
-                                </button>
+    // 1. GIAI ĐOẠN CHỌN ĐỐI THỦ
+    showOpponentSelector ? (
+        <div className="flex flex-col gap-4 w-full max-w-md animate-in slide-in-from-right">
+            <h3 className="text-xl font-bold text-rose-400 text-center mb-2 uppercase">Chọn đối thủ muốn "xử"</h3>
+            <div className="grid grid-cols-2 gap-3">
+                {/* Lọc ra danh sách người chơi (trừ mình ra) */}
+                {(Object.values(roomData.players) as Player[])
+                    .filter(p => p.id !== userId)
+                    .map(p => (
+                        <button
+                            key={p.id}
+                            onClick={() => handleChooseOpponent(p.id)}
+                            className="p-4 bg-slate-800 hover:bg-rose-900 border border-slate-700 hover:border-rose-500 rounded-2xl flex flex-col items-center gap-2 transition-all"
+                        >
+                            <div className="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xl">
+                                {p.name.charAt(0).toUpperCase()}
                             </div>
-                        ) : (
-                            // Nếu chưa chọn gì -> Hiện 2 nút to như cũ
-                            <div className="grid sm:grid-cols-2 gap-6 w-full max-w-2xl">
-                                <button 
-                                    onClick={() => handleDecision('WHEEL')}
-                                    className="group p-8 glass bg-slate-900/40 hover:bg-amber-600 border-amber-500/30 rounded-3xl transition-all text-center space-y-4"
-                                >
-                                    <Target className="mx-auto text-amber-500 group-hover:text-white" size={48} />
-                                    <div className="space-y-1">
-                                        <h3 className="font-bold text-xl">QUAY HÌNH PHẠT</h3>
-                                        <p className="text-sm text-slate-400 group-hover:text-amber-100">Chấp nhận số phận, uống bao nhiêu tính bấy nhiêu.</p>
-                                    </div>
-                                </button>
-                                <button 
-                                    onClick={() => handleDecision('DUEL')}
-                                    className="group p-8 glass bg-slate-900/40 hover:bg-indigo-600 border-indigo-500/30 rounded-3xl transition-all text-center space-y-4"
-                                >
-                                    <Swords className="mx-auto text-indigo-500 group-hover:text-white" size={48} />
-                                    <div className="space-y-1">
-                                        <h3 className="font-bold text-xl">TỬ CHIẾN (SOLO)</h3>
-                                        <p className="text-sm text-slate-400 group-hover:text-indigo-100">Chọn môn sở trường để gỡ gạc. Thắng thoát nạn!</p>
-                                    </div>
-                                </button>
-                            </div>
-                        )
-                    ) : (
-                        <div className="p-8 bg-slate-900/50 rounded-3xl border border-white/5 text-center">
-                            <p className="text-slate-400 italic">Đang chờ <span className="text-white font-bold">{loser.name}</span> lựa chọn...</p>
-                        </div>
-                    )}
+                            <span className="font-bold text-white truncate w-full text-center">{p.name}</span>
+                        </button>
+                    ))}
+            </div>
+            <button 
+                onClick={() => setShowOpponentSelector(false)}
+                className="mt-2 text-slate-500 hover:text-white text-sm underline text-center"
+            >
+                Quay lại
+            </button>
+        </div>
+    ) : 
+    // 2. GIAI ĐOẠN CHỌN MINIGAME (Code cũ của bạn, giữ nguyên logic nhưng hiển thị sau khi chọn người)
+    showMinigameSelector ? (
+        <div className="flex flex-col gap-4 w-full max-w-md animate-in slide-in-from-right">
+            <h3 className="text-xl font-bold text-indigo-300 text-center mb-2">CHỌN MÔN THI ĐẤU</h3>
+            {/* Hiển thị tên đối thủ đang bị nhắm tới */}
+            <p className="text-center text-sm text-slate-400">
+                Đối thủ: <span className="text-rose-400 font-bold">{(Object.values(roomData.players) as Player[]).find(p => p.id === tempOpponentId)?.name}</span>
+            </p>
+
+            <button onClick={() => handleSelectMinigame(MinigameType.RPS)} className="p-4 bg-slate-800 hover:bg-indigo-600 border border-indigo-500/50 rounded-2xl flex items-center gap-4 transition-all">
+                <span className="text-3xl">✌️</span>
+                <div className="text-left"><div className="font-bold text-white">Oẳn Tù Tì</div><div className="text-xs text-slate-400">Đấu trí căng não</div></div>
+            </button>
+            <button onClick={() => handleSelectMinigame(MinigameType.FAST_HANDS)} className="p-4 bg-slate-800 hover:bg-rose-600 border border-rose-500/50 rounded-2xl flex items-center gap-4 transition-all">
+                <span className="text-3xl">⚡</span>
+                <div className="text-left"><div className="font-bold text-white">Nhanh Tay Lẹ Mắt</div><div className="text-xs text-slate-400">Ai nhanh hơn thắng</div></div>
+            </button>
+            <button onClick={() => handleSelectMinigame(MinigameType.MEMORY)} className="p-4 bg-slate-800 hover:bg-emerald-600 border border-emerald-500/50 rounded-2xl flex items-center gap-4 transition-all">
+                <span className="text-3xl">🧠</span>
+                <div className="text-left"><div className="font-bold text-white">Siêu Trí Nhớ</div><div className="text-xs text-slate-400">Ghi nhớ vị trí thẻ</div></div>
+            </button>
+
+            <button onClick={() => { setShowMinigameSelector(false); setShowOpponentSelector(true); }} className="mt-2 text-slate-500 hover:text-white text-sm underline text-center">
+                Chọn lại đối thủ
+            </button>
+        </div>
+    ) : (
+        // 3. GIAI ĐOẠN ĐẦU TIÊN: 2 NÚT TO
+        <div className="grid sm:grid-cols-2 gap-6 w-full max-w-2xl">
+            <button onClick={() => handleDecision('WHEEL')} className="group p-8 glass bg-slate-900/40 hover:bg-amber-600 border-amber-500/30 rounded-3xl transition-all text-center space-y-4">
+                <Target className="mx-auto text-amber-500 group-hover:text-white" size={48} />
+                <div className="space-y-1"><h3 className="font-bold text-xl">QUAY HÌNH PHẠT</h3><p className="text-sm text-slate-400 group-hover:text-amber-100">Chấp nhận số phận.</p></div>
+            </button>
+            <button onClick={() => handleDecision('DUEL')} className="group p-8 glass bg-slate-900/40 hover:bg-indigo-600 border-indigo-500/30 rounded-3xl transition-all text-center space-y-4">
+                <Swords className="mx-auto text-indigo-500 group-hover:text-white" size={48} />
+                <div className="space-y-1"><h3 className="font-bold text-xl">TỬ CHIẾN (SOLO)</h3><p className="text-sm text-slate-400 group-hover:text-indigo-100">Chọn đối thủ & game để gỡ.</p></div>
+            </button>
+        </div>
+    )
+) : (
+    <div className="p-8 bg-slate-900/50 rounded-3xl border border-white/5 text-center">
+        <p className="text-slate-400 italic">Đang chờ <span className="text-white font-bold">{loser.name}</span> đưa ra quyết định...</p>
+    </div>
+)}
         case GameState.MINIGAME_DUEL:
             return <Minigames roomData={roomData} userId={userId} />;
 
