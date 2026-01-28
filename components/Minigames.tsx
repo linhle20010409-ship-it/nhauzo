@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { GameData, GameState, MinigameType } from '../types';
 import { updateRoom } from '../firebaseService';
 import { Zap, Bomb, Beer, AlertTriangle } from 'lucide-react';
@@ -10,31 +10,31 @@ interface MinigamesProps {
 
 const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
   const isHost = roomData.hostId === userId;
-  const challengerId = roomData.currentLoserId!;
-  const defenderId = roomData.targetOpponentId!;
-  const challenger = roomData.players[challengerId];
-  const defender = roomData.players[defenderId];
+  const challengerId = roomData.currentLoserId || "";
+  const defenderId = roomData.targetOpponentId || "";
+  
+  // Lấy thông tin người chơi an toàn
+  const challenger = roomData.players[challengerId] || { name: "Người chơi 1" };
+  const defender = roomData.players[defenderId] || { name: "Người chơi 2" };
   
   const isPlayer = userId === challengerId || userId === defenderId;
   const gameState = (roomData as any).minigameState;
 
-  // Local state để hiển thị đếm ngược cho đẹp mắt
+  // Local state đếm ngược
   const [localCountdown, setLocalCountdown] = useState(3);
 
-  // --- 1. KHỞI TẠO GAME (CHỈ HOST CHẠY) ---
+  // --- 1. KHỞI TẠO GAME (HOST) ---
   useEffect(() => {
     if (!isHost) return;
 
-    // Nếu chưa có dữ liệu game thì tạo mới
     if (!gameState) {
-      // a. Random mức cược từ 0.1 đến 0.5
+      // a. Random cược 0.1 - 0.5
       const randomBase = (Math.floor(Math.random() * 5) + 1) / 10;
 
-      // b. Cấu hình bài cho game Lật Thẻ
+      // b. Tạo bài
       let cards: string[] = [];
       if (roomData.minigameType === MinigameType.MEMORY) {
          cards = ['safe', 'safe', 'safe', 'safe', 'safe', 'bomb'];
-         // Shuffle
          for (let i = cards.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [cards[i], cards[j]] = [cards[j], cards[i]];
@@ -48,47 +48,41 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
           cards: cards,
           flipped: [],
           currentTurn: challengerId,
-          canAttack: false, // Biến quan trọng cho game Nhanh Tay
+          canAttack: false,
           loser: null
         }
       });
     }
   }, [roomData.minigameType, isHost, roomData.id, gameState]);
 
-  // --- 2. LOGIC ĐẾM NGƯỢC CÔNG BẰNG (HOST ĐIỀU KHIỂN) ---
+  // --- 2. LOGIC ĐẾM NGƯỢC ---
   useEffect(() => {
-    // Chỉ chạy ở game Nhanh Tay
     if (roomData.minigameType === MinigameType.FAST_HANDS) {
-        
-        // Hiệu ứng đếm ngược ở client (chỉ để hiển thị)
         const timer = setInterval(() => {
             setLocalCountdown((prev) => (prev > 0 ? prev - 1 : 0));
         }, 1000);
 
-        // Host chịu trách nhiệm mở khóa nút bấm sau 3 giây
         if (isHost && gameState && !gameState.canAttack) {
             const unlockTimer = setTimeout(() => {
                 updateRoom(roomData.id, { 'minigameState/canAttack': true });
-            }, 3000); // Sau đúng 3000ms thì Host cho phép bấm
+            }, 3000);
             return () => clearTimeout(unlockTimer);
         }
-
         return () => clearInterval(timer);
     }
   }, [roomData.minigameType, isHost, gameState?.canAttack]);
 
-  // --- 3. TRỌNG TÀI (HOST XỬ LÝ KẾT QUẢ) ---
+  // --- 3. TRỌNG TÀI ---
   useEffect(() => {
     if (!isHost) return; 
 
     const p1Move = challenger?.minigameMove;
     const p2Move = defender?.minigameMove;
 
-    // A. GAME OẲN TÙ TÌ
+    // A. OẲN TÙ TÌ
     if (roomData.minigameType === MinigameType.RPS) {
       if (p1Move && p2Move) {
         if (p1Move === p2Move) {
-          // Hòa -> Reset sau 2s
           setTimeout(() => {
              const updates: any = {};
              updates[`players/${challengerId}/minigameMove`] = null;
@@ -100,16 +94,15 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
           (p1Move === 'scissors' && p2Move === 'paper') ||
           (p1Move === 'paper' && p2Move === 'rock')
         ) {
-          finishGame(challengerId); // Challenger thắng
+          finishGame(challengerId);
         } else {
-          finishGame(defenderId); // Defender thắng
+          finishGame(defenderId);
         }
       }
     }
 
-    // B. GAME NHANH TAY (Ai bấm trước thắng)
+    // B. NHANH TAY
     if (roomData.minigameType === MinigameType.FAST_HANDS) {
-       // Chỉ xử lý khi canAttack = true (đề phòng bấm trước khi cho phép)
        if (gameState?.canAttack) {
            if (p1Move) finishGame(challengerId);
            else if (p2Move) finishGame(defenderId);
@@ -117,41 +110,37 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
     }
   }, [roomData, isHost]);
 
-  // --- 4. HÀM TÍNH TOÁN HÌNH PHẠT (QUAN TRỌNG) ---
+  // --- 4. TÍNH PHẠT (X2 NẾU THÁCH ĐẤU THUA) ---
   const finishGame = (winnerId: string) => {
     const basePenalty = gameState?.basePenalty || 0.1;
     const isChallengerWon = winnerId === challengerId;
-    
-    // Xác định người thua
     const loserId = isChallengerWon ? defenderId : challengerId;
 
-    // LUẬT NHÂN ĐÔI:
     let finalAmount = basePenalty;
-
     if (loserId === challengerId) {
-        // Nếu Người thách đấu (Kẻ thua cũ) lại thua tiếp -> Gấp đôi
-        finalAmount = basePenalty * 2;
-    } 
-    // Nếu Người bị thách đấu thua -> Giữ nguyên mức gốc
-
-    // Làm tròn số đẹp (ví dụ 0.60000001 -> 0.6)
+        finalAmount = basePenalty * 2; // Phạt gấp đôi
+    }
     finalAmount = Math.round(finalAmount * 10) / 10;
 
     updateRoom(roomData.id, {
         state: GameState.RESULT,
         winnerId: loserId,
         winnerBeerAmount: finalAmount,
-        minigameState: null // Reset state
+        minigameState: null
     });
   };
 
   // --- 5. LOGIC LẬT THẺ ---
   const handleFlipCard = (index: number) => {
     if (!gameState || gameState.loser || gameState.currentTurn !== userId) return;
-    if (gameState.flipped.includes(index)) return;
+    
+    // Bảo vệ: Kiểm tra mảng flipped có tồn tại không
+    const flipped = gameState.flipped || [];
+    if (flipped.includes(index)) return;
 
-    const isBomb = gameState.cards[index] === 'bomb';
-    const newFlipped = [...gameState.flipped, index];
+    const cards = gameState.cards || [];
+    const isBomb = cards[index] === 'bomb';
+    const newFlipped = [...flipped, index];
 
     if (isBomb) {
         const winnerId = userId === challengerId ? defenderId : challengerId;
@@ -174,36 +163,39 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
     updateRoom(roomData.id, { [`players/${userId}/minigameMove`]: move });
   };
 
-  if (!gameState) return <div className="text-white animate-pulse text-center mt-10">Đang quay random mức cược...</div>;
+  // --- CHỐT AN TOÀN: MÀN HÌNH LOADING ---
+  // Nếu dữ liệu chưa tải xong thì hiện loading thay vì sập game
+  if (!gameState || (roomData.minigameType === MinigameType.MEMORY && !gameState.cards)) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-4 mt-10">
+            <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="text-slate-400 animate-pulse">Đang thiết lập bàn chơi...</div>
+        </div>
+      );
+  }
 
   // --- GIAO DIỆN HIỂN THỊ MỨC CƯỢC ---
   const penaltyDisplay = (
-      <div className="bg-slate-900/90 px-6 py-4 rounded-2xl border border-amber-500/50 mb-6 text-center shadow-lg">
+      <div className="bg-slate-900/90 px-6 py-4 rounded-2xl border border-amber-500/50 mb-6 text-center shadow-lg w-full max-w-sm">
           <div className="flex items-center justify-center gap-2 mb-1">
              <AlertTriangle className="text-amber-500" size={20} />
-             <p className="text-slate-400 text-sm uppercase tracking-wider font-bold">Mức cược trận này</p>
+             <p className="text-slate-400 text-sm uppercase tracking-wider font-bold">Mức cược</p>
           </div>
           <div className="text-4xl font-bungee text-amber-500">{gameState.basePenalty} LY</div>
-          
           <div className="mt-2 text-xs text-slate-400 flex flex-col gap-1">
-             <span className="text-rose-400">🔥 Nếu {challenger.name} thua: <span className="font-bold">{Math.round(gameState.basePenalty * 2 * 10)/10} ly</span> (x2)</span>
-             <span className="text-indigo-400">🛡️ Nếu {defender.name} thua: <span className="font-bold">{gameState.basePenalty} ly</span></span>
+             <span className="text-rose-400">🔥 {challenger.name} thua: <span className="font-bold">{Math.round(gameState.basePenalty * 2 * 10)/10} ly</span> (x2)</span>
+             <span className="text-indigo-400">🛡️ {defender.name} thua: <span className="font-bold">{gameState.basePenalty} ly</span></span>
           </div>
       </div>
   );
 
-  // --- RENDER GAME ---
-
-  // 1. LẬT THẺ
+  // 1. GAME LẬT THẺ
   if (roomData.minigameType === MinigameType.MEMORY) {
-      // --- CHỐT AN TOÀN: Nếu chưa có dữ liệu bài thì hiện Loading ---
-      // Điều này ngăn lỗi khi cố gắng map qua một mảng không tồn tại
-      if (!gameState || !gameState.cards) {
-         return <div className="text-white animate-pulse text-center mt-10">Đang chia bài...</div>;
-      }
-      // -----------------------------------------------------------
-
       const isMyTurn = gameState.currentTurn === userId;
+      // Bảo vệ: Đảm bảo cards luôn là mảng
+      const cards = gameState.cards || []; 
+      const flipped = gameState.flipped || [];
+
       return (
         <div className="flex flex-col items-center gap-4 animate-in fade-in w-full">
             {penaltyDisplay}
@@ -212,9 +204,8 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
                 Lượt của: <span className={`font-bold ${isMyTurn ? 'text-green-400' : 'text-slate-300'}`}>{isMyTurn ? "BẠN" : roomData.players[gameState.currentTurn]?.name}</span>
             </div>
             <div className="grid grid-cols-3 gap-3">
-                {/* Bây giờ gameState.cards chắc chắn tồn tại nên sẽ không lỗi nữa */}
-                {gameState.cards.map((cardType: string, index: number) => {
-                    const isFlipped = gameState.flipped.includes(index);
+                {cards.map((cardType: string, index: number) => {
+                    const isFlipped = flipped.includes(index);
                     return (
                         <button key={index} onClick={() => handleFlipCard(index)} disabled={isFlipped || !isMyTurn || !!gameState.loser}
                             className={`w-24 h-32 rounded-xl border-4 transition-all duration-500 relative ${isFlipped ? (cardType === 'bomb' ? 'bg-rose-600 border-rose-400' : 'bg-emerald-600 border-emerald-400') : 'bg-slate-700 border-slate-500'}`}>
@@ -230,7 +221,7 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
       );
   }
 
-  // 2. OẲN TÙ TÌ
+  // 2. GAME OẲN TÙ TÌ
   if (roomData.minigameType === MinigameType.RPS) {
     const myMove = roomData.players[userId]?.minigameMove;
     const opponentId = userId === challengerId ? defenderId : challengerId;
@@ -258,31 +249,21 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
     );
   }
 
-  // 3. NHANH TAY LẸ MẮT (ĐÃ SỬA LOGIC CÔNG BẰNG)
+  // 3. GAME NHANH TAY
   if (roomData.minigameType === MinigameType.FAST_HANDS) {
-      // Biến quan trọng: Nút chỉ hiện khi Firebase báo canAttack = true
       const canClick = gameState.canAttack; 
-
       return (
         <div className="flex flex-col items-center gap-6 animate-in fade-in w-full">
             {penaltyDisplay}
             <h2 className="text-3xl font-bungee text-yellow-500">NHANH TAY LẸ MẮT</h2>
-            
             <div className="relative h-64 w-full max-w-md bg-slate-900 rounded-3xl overflow-hidden border border-slate-700 flex items-center justify-center">
                 {isPlayer ? (
                     canClick ? (
-                        // CHỈ HIỆN KHI HOST CHO PHÉP (Sau 3 giây)
-                        <button 
-                            onClick={() => sendMove(Date.now().toString())}
-                            className="w-40 h-40 bg-red-600 rounded-full shadow-[0_0_60px_rgba(220,38,38,0.8)] animate-bounce active:scale-90 transition-transform flex items-center justify-center cursor-pointer hover:bg-red-500 border-4 border-white"
-                        >
+                        <button onClick={() => sendMove(Date.now().toString())} className="w-40 h-40 bg-red-600 rounded-full shadow-[0_0_60px_rgba(220,38,38,0.8)] animate-bounce active:scale-90 transition-transform flex items-center justify-center cursor-pointer hover:bg-red-500 border-4 border-white">
                             <Zap size={80} className="text-white fill-yellow-300" />
                         </button>
                     ) : (
-                        // ĐANG ĐẾM NGƯỢC (Dùng localCountdown để hiển thị)
-                        <div className="text-9xl font-bold text-white animate-ping font-bungee">
-                            {localCountdown === 0 ? "GO!" : localCountdown}
-                        </div>
+                        <div className="text-9xl font-bold text-white animate-ping font-bungee">{localCountdown === 0 ? "GO!" : localCountdown}</div>
                     )
                 ) : (
                     <div className="flex flex-col items-center">
@@ -291,14 +272,13 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
                     </div>
                 )}
             </div>
-            
             {!canClick && <p className="text-slate-400 animate-pulse mt-4">Chuẩn bị...</p>}
             {canClick && <p className="text-rose-500 font-bold text-2xl animate-bounce mt-4">BẤM NGAY!!!</p>}
         </div>
       );
   }
 
-  return <div className="text-center">Loading...</div>;
+  return <div className="text-center">Loading game data...</div>;
 };
 
 export default Minigames;
