@@ -27,8 +27,7 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
   useEffect(() => {
     if (!isHost) return;
 
-    // Nếu chưa có dữ liệu game HOẶC dữ liệu bị lỗi thiếu trường quan trọng
-    if (!gameState || (roomData.minigameType === MinigameType.MEMORY && !gameState.cards)) {
+    if (!gameState) {
       // a. Random cược 0.1 - 0.5
       const randomBase = (Math.floor(Math.random() * 5) + 1) / 10;
 
@@ -42,12 +41,12 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
          }
       }
 
-      // c. Đẩy lên Firebase (Reset lại toàn bộ state để sửa lỗi dữ liệu cũ)
+      // c. Đẩy lên Firebase
       updateRoom(roomData.id, {
         minigameState: {
           basePenalty: randomBase,
           cards: cards,
-          flipped: [], // Khởi tạo mảng rỗng
+          flipped: [],
           currentTurn: challengerId,
           canAttack: false,
           loser: null
@@ -111,10 +110,12 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
     }
   }, [roomData, isHost]);
 
-  // --- 4. TÍNH PHẠT (X2 NẾU THÁCH ĐẤU THUA) ---
+  // --- 4. TÍNH PHẠT & XÁC ĐỊNH CONTROLLER TIẾP THEO ---
   const finishGame = (winnerId: string) => {
     const basePenalty = gameState?.basePenalty || 0.1;
     const isChallengerWon = winnerId === challengerId;
+    
+    // loserId = Người phải uống bia = Người thua cuộc
     const loserId = isChallengerWon ? defenderId : challengerId;
 
     let finalAmount = basePenalty;
@@ -127,7 +128,10 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
         state: GameState.RESULT,
         winnerId: loserId,
         winnerBeerAmount: finalAmount,
-        minigameState: null
+        minigameState: null,
+        
+        // 👇 UPDATE MỚI: Lưu luôn người thua làm Controller ván sau
+        nextControllerId: loserId 
     });
   };
 
@@ -135,13 +139,13 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
   const handleFlipCard = (index: number) => {
     if (!gameState || gameState.loser || gameState.currentTurn !== userId) return;
     
-    // 👇 FIX LỖI Ở ĐÂY: Luôn đảm bảo flipped là một mảng, nếu không thì dùng mảng rỗng
-    const flippedList = gameState.flipped || []; 
-    if (flippedList.includes(index)) return;
+    // Bảo vệ mảng
+    const flipped = gameState.flipped || [];
+    if (flipped.includes(index)) return;
 
     const cards = gameState.cards || [];
     const isBomb = cards[index] === 'bomb';
-    const newFlipped = [...flippedList, index];
+    const newFlipped = [...flipped, index];
 
     if (isBomb) {
         const winnerId = userId === challengerId ? defenderId : challengerId;
@@ -165,7 +169,6 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
   };
 
   // --- CHỐT AN TOÀN: MÀN HÌNH LOADING ---
-  // Nếu dữ liệu chưa tải xong hoặc bị lỗi thì hiện loading để trigger useEffect khởi tạo lại
   if (!gameState || (roomData.minigameType === MinigameType.MEMORY && !gameState.cards)) {
       return (
         <div className="flex flex-col items-center justify-center gap-4 mt-10">
@@ -175,7 +178,7 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
       );
   }
 
-  // --- GIAO DIỆN HIỂN THỊ MỨC CƯỢC ---
+  // --- GIAO DIỆN ---
   const penaltyDisplay = (
       <div className="bg-slate-900/90 px-6 py-4 rounded-2xl border border-amber-500/50 mb-6 text-center shadow-lg w-full max-w-sm">
           <div className="flex items-center justify-center gap-2 mb-1">
@@ -193,7 +196,6 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
   // 1. GAME LẬT THẺ
   if (roomData.minigameType === MinigameType.MEMORY) {
       const isMyTurn = gameState.currentTurn === userId;
-      // 👇 FIX LỖI Ở ĐÂY: Bảo vệ tuyệt đối khi render mảng
       const cards = gameState.cards || []; 
       const flipped = gameState.flipped || [];
 
@@ -225,8 +227,7 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
   // 2. GAME OẲN TÙ TÌ
   if (roomData.minigameType === MinigameType.RPS) {
     const myMove = roomData.players[userId]?.minigameMove;
-    const opponentId = userId === challengerId ? defenderId : challengerId;
-    const opponentHasMoved = !!roomData.players[opponentId]?.minigameMove;
+    const opponentHasMoved = !!roomData.players[userId === challengerId ? defenderId : challengerId]?.minigameMove;
     return (
         <div className="flex flex-col items-center gap-6 animate-in fade-in w-full">
             {penaltyDisplay}
