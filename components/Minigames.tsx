@@ -27,7 +27,8 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
   useEffect(() => {
     if (!isHost) return;
 
-    if (!gameState) {
+    // Nếu chưa có dữ liệu game HOẶC dữ liệu bị lỗi thiếu trường quan trọng
+    if (!gameState || (roomData.minigameType === MinigameType.MEMORY && !gameState.cards)) {
       // a. Random cược 0.1 - 0.5
       const randomBase = (Math.floor(Math.random() * 5) + 1) / 10;
 
@@ -41,12 +42,12 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
          }
       }
 
-      // c. Đẩy lên Firebase
+      // c. Đẩy lên Firebase (Reset lại toàn bộ state để sửa lỗi dữ liệu cũ)
       updateRoom(roomData.id, {
         minigameState: {
           basePenalty: randomBase,
           cards: cards,
-          flipped: [],
+          flipped: [], // Khởi tạo mảng rỗng
           currentTurn: challengerId,
           canAttack: false,
           loser: null
@@ -134,13 +135,13 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
   const handleFlipCard = (index: number) => {
     if (!gameState || gameState.loser || gameState.currentTurn !== userId) return;
     
-    // Bảo vệ: Kiểm tra mảng flipped có tồn tại không
-    const flipped = gameState.flipped || [];
-    if (flipped.includes(index)) return;
+    // 👇 FIX LỖI Ở ĐÂY: Luôn đảm bảo flipped là một mảng, nếu không thì dùng mảng rỗng
+    const flippedList = gameState.flipped || []; 
+    if (flippedList.includes(index)) return;
 
     const cards = gameState.cards || [];
     const isBomb = cards[index] === 'bomb';
-    const newFlipped = [...flipped, index];
+    const newFlipped = [...flippedList, index];
 
     if (isBomb) {
         const winnerId = userId === challengerId ? defenderId : challengerId;
@@ -164,7 +165,7 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
   };
 
   // --- CHỐT AN TOÀN: MÀN HÌNH LOADING ---
-  // Nếu dữ liệu chưa tải xong thì hiện loading thay vì sập game
+  // Nếu dữ liệu chưa tải xong hoặc bị lỗi thì hiện loading để trigger useEffect khởi tạo lại
   if (!gameState || (roomData.minigameType === MinigameType.MEMORY && !gameState.cards)) {
       return (
         <div className="flex flex-col items-center justify-center gap-4 mt-10">
@@ -192,7 +193,7 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
   // 1. GAME LẬT THẺ
   if (roomData.minigameType === MinigameType.MEMORY) {
       const isMyTurn = gameState.currentTurn === userId;
-      // Bảo vệ: Đảm bảo cards luôn là mảng
+      // 👇 FIX LỖI Ở ĐÂY: Bảo vệ tuyệt đối khi render mảng
       const cards = gameState.cards || []; 
       const flipped = gameState.flipped || [];
 
