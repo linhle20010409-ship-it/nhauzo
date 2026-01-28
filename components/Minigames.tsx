@@ -196,6 +196,13 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
 
   // 1. LẬT THẺ
   if (roomData.minigameType === MinigameType.MEMORY) {
+      // --- CHỐT AN TOÀN: Nếu chưa có dữ liệu bài thì hiện Loading ---
+      // Điều này ngăn lỗi khi cố gắng map qua một mảng không tồn tại
+      if (!gameState || !gameState.cards) {
+         return <div className="text-white animate-pulse text-center mt-10">Đang chia bài...</div>;
+      }
+      // -----------------------------------------------------------
+
       const isMyTurn = gameState.currentTurn === userId;
       return (
         <div className="flex flex-col items-center gap-4 animate-in fade-in w-full">
@@ -205,6 +212,7 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
                 Lượt của: <span className={`font-bold ${isMyTurn ? 'text-green-400' : 'text-slate-300'}`}>{isMyTurn ? "BẠN" : roomData.players[gameState.currentTurn]?.name}</span>
             </div>
             <div className="grid grid-cols-3 gap-3">
+                {/* Bây giờ gameState.cards chắc chắn tồn tại nên sẽ không lỗi nữa */}
                 {gameState.cards.map((cardType: string, index: number) => {
                     const isFlipped = gameState.flipped.includes(index);
                     return (
