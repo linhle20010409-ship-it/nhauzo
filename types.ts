@@ -1,11 +1,11 @@
 export enum GameState {
   LOBBY = 'LOBBY',
   PICKING_LOSER = 'PICKING_LOSER',
-  DEATH_NUMBER = 'DEATH_NUMBER', // Chọn số tử thần
-  VOTING = 'VOTING',             // Bỏ phiếu
+  DEATH_NUMBER = 'DEATH_NUMBER',
+  VOTING = 'VOTING',
   SPINNING_PENALTY = 'SPINNING_PENALTY',
-  DECIDING_PENALTY = 'DECIDING_PENALTY', // Người thua chọn hình phạt/game
-  MINIGAME_DUEL = 'MINIGAME_DUEL',       // Đang đấu minigame
+  DECIDING_PENALTY = 'DECIDING_PENALTY',
+  MINIGAME_DUEL = 'MINIGAME_DUEL',
   RESULT = 'RESULT',
 }
 
@@ -16,9 +16,9 @@ export enum GameMode {
 }
 
 export enum MinigameType {
-  RPS = 'RPS',               // Oẳn tù tì
-  FAST_HANDS = 'FAST_HANDS', // Nhanh tay
-  MEMORY = 'MEMORY',         // Lật thẻ (Bomb)
+  RPS = 'RPS',
+  FAST_HANDS = 'FAST_HANDS',
+  MEMORY = 'MEMORY',
 }
 
 export interface Player {
@@ -26,10 +26,9 @@ export interface Player {
   name: string;
   voteCount?: number;
   selectedNumber?: number;
-  minigameMove?: string | null; // Lưu nước đi (Búa/Kéo/Bao hoặc Time bấm nút)
+  minigameMove?: string | null;
 }
 
-// Dữ liệu cho hiệu ứng vòng quay đồng bộ
 export interface SpinData {
   isSpinning: boolean;
   winnerIndex: number;
@@ -37,14 +36,13 @@ export interface SpinData {
   startTime: number;
 }
 
-// Dữ liệu trạng thái của Minigame (Quan trọng cho game Lật thẻ & Nhanh tay)
 export interface MinigameState {
-  basePenalty: number;      // Mức cược (0.1 - 0.5)
-  cards: string[];          // Danh sách thẻ bài (game lật thẻ)
-  flipped: number[];        // Các thẻ đã lật
-  currentTurn: string;      // Lượt của ai
-  canAttack: boolean;       // Cho phép bấm nút (game nhanh tay)
-  loser: string | null;     // Ai đã thua game này
+  basePenalty: number;
+  cards: string[];
+  flipped: number[];
+  currentTurn: string;
+  canAttack: boolean;
+  loser: string | null;
 }
 
 export interface Penalty {
@@ -59,18 +57,20 @@ export interface GameData {
   state: GameState;
   mode: GameMode;
   
-  // Các biến logic game chọn người thua
-  deathNumber?: number | null;      // Số tử thần (Host chọn trước)
-  currentLoserId?: string | null;   // Người thua hiện tại
-  targetOpponentId?: string | null; // Đối thủ bị thách đấu (trong Minigame)
+  // Logic điều khiển
+  nextControllerId?: string | null; // Người cầm cái (được quyền bấm quay)
+
+  // Logic game
+  deathNumber?: number | null;
+  currentLoserId?: string | null;
+  targetOpponentId?: string | null;
   minigameType?: MinigameType | null;
   
-  winnerId?: string | null;         // Người phải uống (Kết quả cuối cùng)
-  winnerBeerAmount?: number | null; // Số ly phải uống
+  winnerId?: string | null;
+  winnerBeerAmount?: number | null;
   
   penalties: Penalty[];
   
-  // Dữ liệu đồng bộ realtime
   spinData?: SpinData | null;
   minigameState?: MinigameState | null;
 }
