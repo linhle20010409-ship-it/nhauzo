@@ -56,9 +56,9 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
     }
   }, [roomData.minigameType, isHost, roomData.id, gameState]);
 
-  // --- 2. LOGIC ĐẾM NGƯỢC (FAST HANDS & TAP WAR) ---
+  // --- 2. LOGIC ĐẾM NGƯỢC 3 GIÂY CHUẨN BỊ (CHUNG CHO FAST HANDS & TAP WAR) ---
   useEffect(() => {
-    if (roomData.minigameType === MinigameType.FAST_HANDS || roomData.minigameType === MinigameType.TAP_WAR) {
+    if ((roomData.minigameType === MinigameType.FAST_HANDS || roomData.minigameType === MinigameType.TAP_WAR) && !gameState?.canAttack) {
         // Countdown 3s chuẩn bị
         const timer = setInterval(() => {
             setLocalCountdown((prev) => (prev > 0 ? prev - 1 : 0));
@@ -74,23 +74,34 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
     }
   }, [roomData.minigameType, isHost, gameState?.canAttack]);
 
-  // --- LOGIC RIÊNG CHO TAP WAR: ĐẾM NGƯỢC THỜI GIAN CHƠI (10s) ---
+  // --- 3. FIX LỖI: LOGIC ĐẾM NGƯỢC 10s (TAP WAR) ---
+  // Tách riêng useEffect này và KHÔNG cho tapCount vào dependency array
   useEffect(() => {
-      if (roomData.minigameType === MinigameType.TAP_WAR && gameState?.canAttack && isPlayer) {
-          if (gameTimeLeft > 0) {
-              const timer = setInterval(() => {
-                  setGameTimeLeft(prev => prev - 1);
-              }, 1000);
-              return () => clearInterval(timer);
-          } else if (!hasSubmitted) {
-              // Hết giờ -> Tự động gửi điểm
-              setHasSubmitted(true);
-              sendMove(tapCount.toString());
-          }
+      // Chỉ chạy khi đã bắt đầu (canAttack = true) và chưa nộp bài
+      if (roomData.minigameType === MinigameType.TAP_WAR && gameState?.canAttack && isPlayer && !hasSubmitted) {
+          const timer = setInterval(() => {
+              setGameTimeLeft((prev) => {
+                  if (prev <= 1) {
+                      clearInterval(timer);
+                      return 0;
+                  }
+                  return prev - 1;
+              });
+          }, 1000);
+          return () => clearInterval(timer);
       }
-  }, [roomData.minigameType, gameState?.canAttack, gameTimeLeft, isPlayer, hasSubmitted, tapCount]);
+  }, [roomData.minigameType, gameState?.canAttack, isPlayer, hasSubmitted]); 
+  // ⚠️ Lưu ý: Tuyệt đối không thêm 'tapCount' vào dòng trên, nếu không bấm nút sẽ bị reset giờ.
 
-  // --- 3. TRỌNG TÀI (HOST XỬ LÝ KẾT QUẢ) ---
+  // --- 4. TỰ ĐỘNG GỬI ĐIỂM KHI HẾT GIỜ ---
+  useEffect(() => {
+      if (gameTimeLeft === 0 && !hasSubmitted && roomData.minigameType === MinigameType.TAP_WAR && isPlayer) {
+          setHasSubmitted(true);
+          sendMove(tapCount.toString());
+      }
+  }, [gameTimeLeft, hasSubmitted, roomData.minigameType, isPlayer, tapCount]); // tapCount ở đây để gửi đi giá trị mới nhất
+
+  // --- 5. TRỌNG TÀI (HOST XỬ LÝ KẾT QUẢ) ---
   useEffect(() => {
     if (!isHost) return; 
 
@@ -127,22 +138,21 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
        }
     }
 
-    // C. TAP WAR (LOẠN ĐẢ) - So sánh điểm số
+    // C. TAP WAR (LOẠN ĐẢ)
     if (roomData.minigameType === MinigameType.TAP_WAR) {
         if (p1Move && p2Move) {
             const score1 = parseInt(p1Move);
             const score2 = parseInt(p2Move);
             
-            // Đợi 1 chút cho kịch tính rồi công bố
             setTimeout(() => {
                 if (score1 > score2) finishGame(challengerId);
                 else if (score2 > score1) finishGame(defenderId);
                 else {
-                    // Hòa -> Reset để chơi lại (hoặc random, ở đây mình reset)
+                    // Hòa -> Reset
                     const updates: any = {};
                     updates[`players/${challengerId}/minigameMove`] = null;
                     updates[`players/${defenderId}/minigameMove`] = null;
-                    // Reset lại trạng thái canAttack để đếm ngược lại
+                    // Reset lại để đếm ngược lại
                     updates['minigameState/canAttack'] = false; 
                     updateRoom(roomData.id, updates);
                 }
@@ -314,7 +324,7 @@ const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
       );
   }
 
-  // 4. TAP WAR (LOẠN ĐẢ MÀN HÌNH) - MỚI UPDATE
+  // 4. TAP WAR (LOẠN ĐẢ MÀN HÌNH) - ĐÃ FIX TIMER
   if (roomData.minigameType === MinigameType.TAP_WAR) {
       const canClick = gameState.canAttack; 
 
