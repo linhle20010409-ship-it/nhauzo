@@ -37,7 +37,7 @@ export interface SpinData {
   startTime: number;
 }
 
-// Dữ liệu trạng thái của Minigame (Mới thêm)
+// Dữ liệu trạng thái của Minigame (Quan trọng cho game Lật thẻ & Nhanh tay)
 export interface MinigameState {
   basePenalty: number;      // Mức cược (0.1 - 0.5)
   cards: string[];          // Danh sách thẻ bài (game lật thẻ)
@@ -59,18 +59,18 @@ export interface GameData {
   state: GameState;
   mode: GameMode;
   
-  // Các biến logic game
-  deathNumber?: number | null;
-  currentLoserId?: string | null;
-  targetOpponentId?: string | null; // Đối thủ bị thách đấu
+  // Các biến logic game chọn người thua
+  deathNumber?: number | null;      // Số tử thần (Host chọn trước)
+  currentLoserId?: string | null;   // Người thua hiện tại
+  targetOpponentId?: string | null; // Đối thủ bị thách đấu (trong Minigame)
   minigameType?: MinigameType | null;
   
-  winnerId?: string | null;         // Người phải uống (Kết quả cuối)
+  winnerId?: string | null;         // Người phải uống (Kết quả cuối cùng)
   winnerBeerAmount?: number | null; // Số ly phải uống
   
   penalties: Penalty[];
   
-  // Dữ liệu mới thêm vào
+  // Dữ liệu đồng bộ realtime
   spinData?: SpinData | null;
   minigameState?: MinigameState | null;
 }
