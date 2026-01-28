@@ -3,7 +3,7 @@ import { GameData, GameState, Player, GameMode, MinigameType } from '../types';
 import { updateRoom } from '../firebaseService';
 import Wheel from './Wheel';
 import Minigames from './Minigames';
-import { Beer, Target, Swords, AlertTriangle } from 'lucide-react';
+import { Beer, Target, Swords, AlertTriangle, Bomb } from 'lucide-react'; // Đã thêm icon Bomb
 
 interface GameBoardProps {
   roomData: GameData;
@@ -22,19 +22,17 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
   const [showMinigameSelector, setShowMinigameSelector] = useState(false);
   const [tempOpponentId, setTempOpponentId] = useState<string | null>(null);
 
-  // --- LOGIC GAME MỚI: QUAY ĐỒNG BỘ (Bước 2) ---
+  // --- LOGIC GAME MỚI: QUAY ĐỒNG BỘ ---
 
   // Hàm bắt đầu quay (Chỉ Host gọi)
   const startSynchronizedSpin = async (type: 'LOSER' | 'PENALTY') => {
     if (!isHost) return;
 
     if (type === 'LOSER') {
-        // 1. Chọn người thua ngẫu nhiên
         const players = Object.values(roomData.players) as Player[];
         const randomIndex = Math.floor(Math.random() * players.length);
         const winnerId = players[randomIndex].id;
 
-        // 2. Gửi lệnh quay lên Firebase
         await updateRoom(roomData.id, {
             state: GameState.PICKING_LOSER,
             spinData: {
@@ -46,17 +44,13 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
         });
     } 
     else if (type === 'PENALTY') {
-        // 1. Chọn hình phạt ngẫu nhiên
         const penaltyIndex = Math.floor(Math.random() * roomData.penalties.length);
         
-        // 2. Gửi lệnh quay lên Firebase
         await updateRoom(roomData.id, {
             state: GameState.SPINNING_PENALTY,
             spinData: {
                 isSpinning: true,
                 winnerIndex: penaltyIndex,
-                // Trong trường hợp này winnerId dùng để lưu index hình phạt hoặc ID người chịu phạt tùy logic,
-                // ở đây ta chỉ cần winnerIndex để Wheel hiển thị là đủ.
                 winnerId: roomData.currentLoserId, 
                 startTime: Date.now()
             }
@@ -64,13 +58,10 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
     }
   };
 
-  // Hàm xử lý khi vòng quay kết thúc (Wheel gọi hàm này)
+  // Hàm xử lý khi vòng quay kết thúc
   const handleSpinFinished = async () => {
-      // Chỉ Host mới gửi lệnh chuyển màn hình để tránh xung đột dữ liệu
       if (isHost && roomData.spinData?.isSpinning) {
-          // Đợi 1 giây sau khi dừng hẳn cho kịch tính
           setTimeout(async () => {
-              // Nếu đang quay tìm người thua -> Chuyển sang màn hình chọn hình phạt
               if (roomData.state === GameState.PICKING_LOSER) {
                   await updateRoom(roomData.id, { 
                       state: GameState.DECIDING_PENALTY, 
@@ -78,7 +69,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                       spinData: null 
                   });
               }
-              // Nếu đang quay hình phạt -> Chuyển sang kết quả
               else if (roomData.state === GameState.SPINNING_PENALTY) {
                   const p = roomData.penalties[roomData.spinData.winnerIndex];
                   await updateRoom(roomData.id, { 
@@ -94,7 +84,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
 
   // --- CÁC LOGIC GAME CŨ ---
 
-  // 1. Chế độ Số Tử Thần
   const selectDeathNumber = async (num: number) => {
     if (deathSelection !== null) return;
     setDeathSelection(num);
@@ -118,7 +107,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
     await updateRoom(roomData.id, updates);
   };
 
-  // 2. Chế độ Bỏ Phiếu
   const handleVote = async (targetId: string) => {
     if (votingSelection) return;
     setVotingSelection(targetId);
@@ -145,7 +133,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
     await updateRoom(roomData.id, updates);
   };
 
-  // 3. Xử lý quyết định của Người Thua
   const handleDecision = async (type: 'WHEEL' | 'DUEL') => {
     if (!isLoser) return;
     if (type === 'WHEEL') {
@@ -155,14 +142,12 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
     }
   };
 
-  // 4. Chọn đối thủ để Duel
   const handleChooseOpponent = (opponentId: string) => {
       setTempOpponentId(opponentId);
       setShowOpponentSelector(false);
       setShowMinigameSelector(true);
   };
 
-  // 5. Chọn Minigame để đấu
   const handleSelectMinigame = async (selectedGame: MinigameType) => {
     let targetId = tempOpponentId;
     if (!targetId) {
@@ -181,10 +166,8 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
     setTempOpponentId(null);
   };
 
-  // 6. Quay về Lobby (Chỉ Host)
   const backToLobby = async () => {
       if (!isHost) return;
-      
       const updates: any = {
           state: GameState.LOBBY,
           currentLoserId: null,
@@ -193,16 +176,14 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
           winnerBeerAmount: null,
           deathNumber: null,
           minigameType: null,
-          
-          // 👇 QUAN TRỌNG: Xóa sạch dữ liệu cũ để ván mới random lại từ đầu
-          spinData: null, 
-          minigameState: null 
+          spinData: null,
+          minigameState: null // Quan trọng: Reset trạng thái minigame (bài, cược)
       };
       
       Object.keys(roomData.players).forEach(id => {
           updates[`players/${id}/voteCount`] = 0;
           updates[`players/${id}/selectedNumber`] = null;
-          updates[`players/${id}/minigameMove`] = null; // Xóa nước đi cũ
+          updates[`players/${id}/minigameMove`] = null; 
       });
       
       await updateRoom(roomData.id, updates);
@@ -212,23 +193,18 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
   const renderPhase = () => {
     switch(roomData.state) {
         case GameState.PICKING_LOSER:
-            // Mode: Vòng Quay Ngẫu Nhiên
             if (roomData.mode === GameMode.RANDOM) {
-                // Lấy dữ liệu quay từ Firebase
                 const spinData = roomData.spinData || { isSpinning: false, winnerIndex: null };
-
                 return (
                     <div className="flex flex-col items-center gap-8">
                         <h2 className="text-3xl font-bungee text-amber-500">Vòng quay định mệnh</h2>
                         <div className="relative">
                             <Wheel 
                                 items={(Object.values(roomData.players) as Player[]).map(p => ({ label: p.name, value: p.id }))} 
-                                // Truyền props mới cho Wheel
                                 isSpinning={spinData.isSpinning}
                                 winnerIndex={spinData.winnerIndex}
                                 onFinished={handleSpinFinished}
                             />
-                            {/* Nút bấm chỉ hiện cho Host và khi CHƯA quay */}
                             {isHost && !spinData.isSpinning && (
                                 <button 
                                     onClick={() => startSynchronizedSpin('LOSER')}
@@ -240,7 +216,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                                 </button>
                             )}
                         </div>
-                        
                         {spinData.isSpinning ? (
                              <p className="text-rose-500 font-bold animate-pulse text-xl">ĐANG TÌM NẠN NHÂN...</p>
                         ) : (
@@ -249,7 +224,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                     </div>
                 );
             }
-            // Mode: Con Số Tử Thần
             if (roomData.mode === GameMode.DEATH_NUMBER) {
                 return (
                     <div className="flex flex-col items-center gap-8 animate-in fade-in">
@@ -273,7 +247,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                     </div>
                 );
             }
-            // Mode: Bỏ Phiếu
             if (roomData.mode === GameMode.VOTING) {
                 return (
                     <div className="flex flex-col items-center gap-8 animate-in slide-in-from-bottom">
@@ -316,7 +289,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                     </div>
 
                     {isLoser ? (
-                        // GIAI ĐOẠN CHỌN ĐỐI THỦ
                         showOpponentSelector ? (
                             <div className="flex flex-col gap-4 w-full max-w-md animate-in slide-in-from-right">
                                 <h3 className="text-xl font-bold text-rose-400 text-center mb-2 uppercase">Chọn đối thủ muốn "xử"</h3>
@@ -344,7 +316,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                                 </button>
                             </div>
                         ) : 
-                        // GIAI ĐOẠN CHỌN MINIGAME
                         showMinigameSelector ? (
                             <div className="flex flex-col gap-4 w-full max-w-md animate-in slide-in-from-right">
                                 <h3 className="text-xl font-bold text-indigo-300 text-center mb-2">CHỌN MÔN THI ĐẤU</h3>
@@ -360,9 +331,14 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                                     <span className="text-3xl">⚡</span>
                                     <div className="text-left"><div className="font-bold text-white">Nhanh Tay Lẹ Mắt</div><div className="text-xs text-slate-400">Ai nhanh hơn thắng</div></div>
                                 </button>
+                                
+                                {/* 👇 ĐÃ SỬA: Đổi tên và icon từ Brain sang Bomb */}
                                 <button onClick={() => handleSelectMinigame(MinigameType.MEMORY)} className="p-4 bg-slate-800 hover:bg-emerald-600 border border-emerald-500/50 rounded-2xl flex items-center gap-4 transition-all">
-                                    <span className="text-3xl">🧠</span>
-                                    <div className="text-left"><div className="font-bold text-white">Siêu Trí Nhớ</div><div className="text-xs text-slate-400">Ghi nhớ vị trí thẻ</div></div>
+                                    <span className="text-3xl"><Bomb className="text-rose-500 inline" size={32}/></span>
+                                    <div className="text-left">
+                                        <div className="font-bold text-white">Lật Thẻ Tử Thần</div>
+                                        <div className="text-xs text-slate-400">Né bom hoặc uống!</div>
+                                    </div>
                                 </button>
     
                                 <button onClick={() => { setShowMinigameSelector(false); setShowOpponentSelector(true); }} className="mt-2 text-slate-500 hover:text-white text-sm underline text-center">
@@ -370,7 +346,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                                 </button>
                             </div>
                         ) : (
-                            // GIAI ĐOẠN ĐẦU TIÊN: 2 NÚT TO
                             <div className="grid sm:grid-cols-2 gap-6 w-full max-w-2xl">
                                 <button onClick={() => handleDecision('WHEEL')} className="group p-8 glass bg-slate-900/40 hover:bg-amber-600 border-amber-500/30 rounded-3xl transition-all text-center space-y-4">
                                     <Target className="mx-auto text-amber-500 group-hover:text-white" size={48} />
@@ -391,7 +366,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
             );
 
         case GameState.SPINNING_PENALTY:
-            // Lấy dữ liệu quay từ Firebase
             const penaltySpinData = roomData.spinData || { isSpinning: false, winnerIndex: null };
             const canSpinPenalty = isHost || isLoser; 
 
@@ -412,8 +386,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                             winnerIndex={penaltySpinData.winnerIndex}
                             onFinished={handleSpinFinished}
                         />
-
-                        {/* Nút bấm quay cho cả Host hoặc Người thua */}
                         {canSpinPenalty && !penaltySpinData.isSpinning && (
                             <button 
                                 onClick={() => startSynchronizedSpin('PENALTY')}
@@ -466,12 +438,8 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
   return (
     <div className="w-full relative">
       {renderPhase()}
-      
-      {/* Nút ZÔ 100% */}
       <button 
-        onClick={() => {
-            console.log("ZÔOOOOOOO!"); 
-        }}
+        onClick={() => { console.log("ZÔOOOOOOO!"); }}
         className="fixed bottom-6 right-6 w-16 h-16 bg-yellow-500 hover:bg-yellow-400 rounded-full shadow-lg shadow-yellow-500/50 flex items-center justify-center border-4 border-yellow-200 active:scale-90 transition-all z-50 animate-bounce"
         title="Cụng ly!"
       >
