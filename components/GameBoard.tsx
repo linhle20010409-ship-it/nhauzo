@@ -15,7 +15,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
   const isLoser = roomData.currentLoserId === userId;
 
   // --- XÁC ĐỊNH NGƯỜI CẦM CÁI (CONTROLLER) ---
-  // Ưu tiên người được chỉ định (nextControllerId), nếu không có thì là Host
+  // Nếu chưa có nextControllerId thì mặc định là Host
   const controllerId = roomData.nextControllerId || roomData.hostId;
   const isController = userId === controllerId;
   const controllerName = roomData.players[controllerId]?.name || "Chủ phòng";
@@ -30,7 +30,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
   // --- LOGIC GAME MỚI: QUAY ĐỒNG BỘ ---
 
   const startSynchronizedSpin = async (type: 'LOSER' | 'PENALTY') => {
-    // Chỉ cho phép Controller hoặc Host bấm
+    // Cho phép Controller hoặc Host bấm
     if (!isController && !isHost) return;
 
     if (type === 'LOSER') {
@@ -64,7 +64,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
   };
 
   const handleSpinFinished = async () => {
-      // Chỉ Host gửi lệnh chuyển màn hình để tránh xung đột
       if (isHost && roomData.spinData?.isSpinning) {
           setTimeout(async () => {
               if (roomData.state === GameState.PICKING_LOSER) {
@@ -76,30 +75,33 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
               }
               else if (roomData.state === GameState.SPINNING_PENALTY) {
                   const p = roomData.penalties[roomData.spinData.winnerIndex];
+                  
+                  // 👇 LƯU LUÔN NGƯỜI THUA LÀM CONTROLLER CHO VÁN SAU
+                  // Người bị phạt (currentLoserId) sẽ là người cầm cái ván tới
+                  const nextController = roomData.currentLoserId;
+
                   await updateRoom(roomData.id, { 
                       state: GameState.RESULT,
                       winnerId: roomData.currentLoserId,
                       winnerBeerAmount: p.amount,
-                      spinData: null
+                      spinData: null,
+                      nextControllerId: nextController // Lưu ngay tại đây cho chắc ăn
                   });
               }
           }, 1000);
       }
   };
 
-  // --- LOGIC QUAY VỀ LOBBY & CHUYỂN QUYỀN ---
+  // --- LOGIC QUAY VỀ LOBBY ---
   const backToLobby = async () => {
       if (!isHost) return;
       
-      // 👇 LOGIC QUAN TRỌNG: Xác định ai sẽ cầm cái ván sau
-      // Lấy người thắng (người phải uống) HOẶC người thua hiện tại. Nếu lỗi thì trả về Host.
-      const nextController = roomData.winnerId || roomData.currentLoserId || roomData.hostId;
-      console.log("Next Controller ID:", nextController); // Debug xem ID có đúng không
+      // Lấy người cầm cái đã được lưu từ lúc kết thúc game
+      // Nếu không có (ví dụ lỗi) thì fallback về winnerId hoặc Host
+      const nextController = roomData.nextControllerId || roomData.winnerId || roomData.hostId;
 
       const updates: any = {
           state: GameState.LOBBY,
-          
-          // Reset dữ liệu game
           currentLoserId: null,
           targetOpponentId: null,
           winnerId: null,
@@ -108,9 +110,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
           minigameType: null,
           spinData: null,
           minigameState: null,
-
-          // CẬP NHẬT NGƯỜI CẦM CÁI MỚI
-          nextControllerId: nextController 
+          nextControllerId: nextController // Đảm bảo giữ nguyên người này cho ván sau
       };
       
       Object.keys(roomData.players).forEach(id => {
@@ -122,7 +122,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
       await updateRoom(roomData.id, updates);
   };
 
-  // --- CÁC LOGIC GAME KHÁC ---
+  // --- CÁC LOGIC GAME CŨ ---
 
   const selectDeathNumber = async (num: number) => {
     if (deathSelection !== null) return;
@@ -135,14 +135,19 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
     
     if (selectedCount === players.length) {
         const hitPlayer = players.find(p => p.selectedNumber === roomData.deathNumber || (p.id === userId && num === roomData.deathNumber));
+        
+        let loserId = '';
         if (hitPlayer) {
-            updates.currentLoserId = hitPlayer.id;
-            updates.state = GameState.DECIDING_PENALTY;
+            loserId = hitPlayer.id;
         } else {
             const randomPlayer = players[Math.floor(Math.random() * players.length)];
-            updates.currentLoserId = randomPlayer.id;
-            updates.state = GameState.DECIDING_PENALTY;
+            loserId = randomPlayer.id;
         }
+
+        // Cập nhật người thua luôn vào nextControllerId
+        updates.currentLoserId = loserId;
+        updates.nextControllerId = loserId; 
+        updates.state = GameState.DECIDING_PENALTY;
     }
     await updateRoom(roomData.id, updates);
   };
@@ -168,6 +173,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
             }
         });
         updates.currentLoserId = loserId;
+        updates.nextControllerId = loserId; // Cập nhật người cầm cái tương lai
         updates.state = GameState.DECIDING_PENALTY;
     }
     await updateRoom(roomData.id, updates);
@@ -404,7 +410,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
 
         case GameState.SPINNING_PENALTY:
             const penaltySpinData = roomData.spinData || { isSpinning: false, winnerIndex: null };
-            // Ở màn hình phạt: Người thua (Loser) hoặc Host hoặc Controller đều được quay cho xôm
+            // Cho phép Host hoặc Loser hoặc Controller quay
             const canSpinPenalty = isHost || isLoser || isController; 
 
             return (
@@ -457,7 +463,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                         </div>
                     </div>
                     
-                    {/* CHỈ HOST MỚI THẤY NÚT NÀY ĐỂ TRÁNH RESET LUNG TUNG */}
                     {isHost && (
                         <button 
                             onClick={backToLobby}
