@@ -111,7 +111,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
     setTempOpponentId(null);
   };
 
-  // 6. Quay về Lobby (Chỉ Host)
+  // 6. Quay về Lobby (Chỉ Host) - ĐÃ SỬA: Thêm reset minigameMove
   const backToLobby = async () => {
       if (!isHost) return;
       const updates: any = {
@@ -123,10 +123,14 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
           deathNumber: null,
           minigameType: null
       };
+      
       Object.keys(roomData.players).forEach(id => {
           updates[`players/${id}/voteCount`] = 0;
           updates[`players/${id}/selectedNumber`] = null;
+          // 👇 QUAN TRỌNG: Dòng này giúp xóa nước đi cũ, tránh lỗi kẹt game
+          updates[`players/${id}/minigameMove`] = null; 
       });
+      
       await updateRoom(roomData.id, updates);
   };
 
