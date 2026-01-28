@@ -19,6 +19,7 @@ export enum MinigameType {
   RPS = 'RPS',
   FAST_HANDS = 'FAST_HANDS',
   MEMORY = 'MEMORY',
+  TAP_WAR = 'TAP_WAR',
 }
 
 export interface Player {
