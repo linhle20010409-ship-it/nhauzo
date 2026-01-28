@@ -181,9 +181,10 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
     setTempOpponentId(null);
   };
 
-  // 6. Quay về Lobby
+  // 6. Quay về Lobby (Chỉ Host)
   const backToLobby = async () => {
       if (!isHost) return;
+      
       const updates: any = {
           state: GameState.LOBBY,
           currentLoserId: null,
@@ -192,13 +193,16 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
           winnerBeerAmount: null,
           deathNumber: null,
           minigameType: null,
-          spinData: null // Reset dữ liệu quay
+          
+          // 👇 QUAN TRỌNG: Xóa sạch dữ liệu cũ để ván mới random lại từ đầu
+          spinData: null, 
+          minigameState: null 
       };
       
       Object.keys(roomData.players).forEach(id => {
           updates[`players/${id}/voteCount`] = 0;
           updates[`players/${id}/selectedNumber`] = null;
-          updates[`players/${id}/minigameMove`] = null; 
+          updates[`players/${id}/minigameMove`] = null; // Xóa nước đi cũ
       });
       
       await updateRoom(roomData.id, updates);
