@@ -125,7 +125,14 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
     
     if (selectedCount === players.length) {
         const hitPlayer = players.find(p => p.selectedNumber === roomData.deathNumber || (p.id === userId && num === roomData.deathNumber));
-        let loserId = hitPlayer ? hitPlayer.id : players[Math.floor(Math.random() * players.length)].id;
+        
+        let loserId = '';
+        if (hitPlayer) {
+            loserId = hitPlayer.id;
+        } else {
+            const randomPlayer = players[Math.floor(Math.random() * players.length)];
+            loserId = randomPlayer.id;
+        }
 
         updates.currentLoserId = loserId;
         updates.nextControllerId = loserId; 
@@ -223,7 +230,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                 );
             }
 
-            // --- CẬP NHẬT PHẦN BỎ PHIẾU (ẨN SỐ VOTE) ---
+            // --- BỎ PHIẾU KÍN (ẨN SỐ VOTE) ---
             if (roomData.mode === GameMode.VOTING) {
                 const totalVotes = Object.values(roomData.players).reduce((acc, p) => acc + (p.voteCount || 0), 0);
                 const totalPlayers = Object.keys(roomData.players).length;
@@ -252,7 +259,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                                     </div>
                                     <span className="font-bold">{p.name}</span>
                                     
-                                    {/* 👇 ĐÃ SỬA: Ẩn số vote cụ thể, chỉ hiện dấu hỏi */}
+                                    {/* CHỖ NÀY ĐÃ SỬA: CHỈ HIỆN DẤU ??? */}
                                     <div className="text-xs font-bold bg-black/30 px-3 py-1 rounded-full text-slate-400 flex items-center gap-1">
                                         <Vote size={12}/> ???
                                     </div>
@@ -276,13 +283,13 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                         <h2 className="text-4xl font-bungee text-white">XIN CHIA BUỒN!</h2>
                         <p className="text-2xl font-bold text-rose-500 uppercase tracking-widest">{loser.name} LÀ NGƯỜI THUA</p>
                         
-                        {/* 👇 ĐÃ SỬA: HIỆN KẾT QUẢ VOTE CÔNG KHAI TẠI ĐÂY */}
+                        {/* HIỆN KẾT QUẢ VOTE CÔNG KHAI TẠI ĐÂY */}
                         {roomData.mode === GameMode.VOTING && (
                             <div className="mt-4 bg-slate-900/80 p-4 rounded-xl border border-white/10 max-w-sm mx-auto">
                                 <h4 className="text-emerald-400 font-bold mb-2 uppercase text-sm border-b border-white/10 pb-2">Kết quả bỏ phiếu</h4>
                                 <div className="space-y-2">
                                     {(Object.values(roomData.players) as Player[])
-                                        .sort((a, b) => (b.voteCount || 0) - (a.voteCount || 0)) // Sắp xếp ai nhiều vote lên đầu
+                                        .sort((a, b) => (b.voteCount || 0) - (a.voteCount || 0))
                                         .map(p => (
                                             <div key={p.id} className="flex justify-between items-center text-sm">
                                                 <span>{p.name}</span>
