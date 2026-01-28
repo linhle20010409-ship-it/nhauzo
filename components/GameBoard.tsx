@@ -3,7 +3,7 @@ import { GameData, GameState, Player, GameMode, MinigameType } from '../types';
 import { updateRoom } from '../firebaseService';
 import Wheel from './Wheel';
 import Minigames from './Minigames';
-import { Beer, Target, Swords, AlertTriangle, Bomb, Crown } from 'lucide-react';
+import { Beer, Target, Swords, AlertTriangle, Bomb, Crown, UserCheck } from 'lucide-react';
 
 interface GameBoardProps {
   roomData: GameData;
@@ -15,7 +15,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
   const isLoser = roomData.currentLoserId === userId;
 
   // --- XÁC ĐỊNH NGƯỜI CẦM CÁI (CONTROLLER) ---
-  // Nếu có người thua ván trước (nextControllerId) thì người đó cầm cái, ngược lại là Host
+  // Ưu tiên người được chỉ định (nextControllerId), nếu không có thì là Host
   const controllerId = roomData.nextControllerId || roomData.hostId;
   const isController = userId === controllerId;
   const controllerName = roomData.players[controllerId]?.name || "Chủ phòng";
@@ -30,7 +30,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
   // --- LOGIC GAME MỚI: QUAY ĐỒNG BỘ ---
 
   const startSynchronizedSpin = async (type: 'LOSER' | 'PENALTY') => {
-    // Cho phép Controller bấm (hoặc Host bấm hộ nếu cần)
+    // Chỉ cho phép Controller hoặc Host bấm
     if (!isController && !isHost) return;
 
     if (type === 'LOSER') {
@@ -87,7 +87,42 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
       }
   };
 
-  // --- CÁC LOGIC GAME CŨ ---
+  // --- LOGIC QUAY VỀ LOBBY & CHUYỂN QUYỀN ---
+  const backToLobby = async () => {
+      if (!isHost) return;
+      
+      // 👇 LOGIC QUAN TRỌNG: Xác định ai sẽ cầm cái ván sau
+      // Lấy người thắng (người phải uống) HOẶC người thua hiện tại. Nếu lỗi thì trả về Host.
+      const nextController = roomData.winnerId || roomData.currentLoserId || roomData.hostId;
+      console.log("Next Controller ID:", nextController); // Debug xem ID có đúng không
+
+      const updates: any = {
+          state: GameState.LOBBY,
+          
+          // Reset dữ liệu game
+          currentLoserId: null,
+          targetOpponentId: null,
+          winnerId: null,
+          winnerBeerAmount: null,
+          deathNumber: null,
+          minigameType: null,
+          spinData: null,
+          minigameState: null,
+
+          // CẬP NHẬT NGƯỜI CẦM CÁI MỚI
+          nextControllerId: nextController 
+      };
+      
+      Object.keys(roomData.players).forEach(id => {
+          updates[`players/${id}/voteCount`] = 0;
+          updates[`players/${id}/selectedNumber`] = null;
+          updates[`players/${id}/minigameMove`] = null; 
+      });
+      
+      await updateRoom(roomData.id, updates);
+  };
+
+  // --- CÁC LOGIC GAME KHÁC ---
 
   const selectDeathNumber = async (num: number) => {
     if (deathSelection !== null) return;
@@ -171,43 +206,13 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
     setTempOpponentId(null);
   };
 
-  const backToLobby = async () => {
-      if (!isHost) return;
-      
-      // Người thua ván này (winnerId là người phải uống) sẽ làm cái ván sau
-      const nextController = roomData.winnerId || roomData.hostId;
-
-      const updates: any = {
-          state: GameState.LOBBY,
-          currentLoserId: null,
-          targetOpponentId: null,
-          winnerId: null,
-          winnerBeerAmount: null,
-          deathNumber: null,
-          minigameType: null,
-          spinData: null,
-          minigameState: null,
-          
-          // 👇 CẬP NHẬT NGƯỜI CẦM CÁI CHO VÁN SAU
-          nextControllerId: nextController 
-      };
-      
-      Object.keys(roomData.players).forEach(id => {
-          updates[`players/${id}/voteCount`] = 0;
-          updates[`players/${id}/selectedNumber`] = null;
-          updates[`players/${id}/minigameMove`] = null; 
-      });
-      
-      await updateRoom(roomData.id, updates);
-  };
-
   // --- RENDER GIAO DIỆN ---
   const renderPhase = () => {
     switch(roomData.state) {
         case GameState.PICKING_LOSER:
             if (roomData.mode === GameMode.RANDOM) {
                 const spinData = roomData.spinData || { isSpinning: false, winnerIndex: null };
-                const canSpin = isController || isHost; // Controller hoặc Host được bấm
+                const canSpin = isController || isHost; 
 
                 return (
                     <div className="flex flex-col items-center gap-8">
@@ -217,9 +222,13 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                         </div>
                         
                         {!spinData.isSpinning && (
-                            <p className="text-sm text-slate-400">
-                                Người cầm cái: <span className="font-bold text-amber-400">{controllerName}</span>
-                            </p>
+                            <div className="flex flex-col items-center gap-1">
+                                <p className="text-sm text-slate-400">Người cầm cái:</p>
+                                <div className="flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-full border border-amber-500/50">
+                                    <UserCheck size={18} className="text-amber-400" />
+                                    <span className="font-bold text-amber-400 text-lg">{controllerName}</span>
+                                </div>
+                            </div>
                         )}
 
                         <div className="relative">
@@ -236,7 +245,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                                     className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
                                                w-20 h-20 rounded-full border-4 border-white shadow-xl
                                                text-white font-bold text-xl transition-all z-20
-                                               ${isController ? 'bg-amber-500 hover:bg-amber-600 hover:scale-110' : 'bg-slate-500 hover:bg-slate-600'}
+                                               ${isController ? 'bg-amber-500 hover:bg-amber-600 hover:scale-110 animate-pulse' : 'bg-slate-500 hover:bg-slate-600'}
                                     `}
                                 >
                                     {isController ? "QUAY" : "HỘ"}
@@ -448,7 +457,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                         </div>
                     </div>
                     
-                    {/* Chỉ HOST mới thấy nút này để tránh việc nhiều người bấm reset lung tung */}
+                    {/* CHỈ HOST MỚI THẤY NÚT NÀY ĐỂ TRÁNH RESET LUNG TUNG */}
                     {isHost && (
                         <button 
                             onClick={backToLobby}
