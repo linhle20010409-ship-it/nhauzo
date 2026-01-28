@@ -226,7 +226,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                 );
             }
             
-            // Mode 2: Số Tử Thần (ĐÃ KHÔI PHỤC)
+            // Mode 2: Số Tử Thần (ĐÃ ĐƯỢC THÊM LẠI)
             if (roomData.mode === GameMode.DEATH_NUMBER) {
                 return (
                     <div className="flex flex-col items-center gap-8 animate-in fade-in">
@@ -251,7 +251,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ roomData, userId }) => {
                 );
             }
 
-            // Mode 3: Bỏ Phiếu (ĐÃ KHÔI PHỤC)
+            // Mode 3: Bỏ Phiếu (ĐÃ ĐƯỢC THÊM LẠI)
             if (roomData.mode === GameMode.VOTING) {
                 return (
                     <div className="flex flex-col items-center gap-8 animate-in slide-in-from-bottom">
