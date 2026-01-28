@@ -1,8 +1,7 @@
-
-import React, { useState, useEffect } from 'react';
-import { GameData, GameState, MinigameType } from '../types';
+import React, { useEffect, useState } from 'react';
+import { GameData, GameState, MinigameType, Player } from '../types';
 import { updateRoom } from '../firebaseService';
-import { Swords, Zap, Brain, Hand, HelpCircle } from 'lucide-react';
+import { Hand, Zap, Brain, Timer } from 'lucide-react';
 
 interface MinigamesProps {
   roomData: GameData;
@@ -11,190 +10,158 @@ interface MinigamesProps {
 
 const Minigames: React.FC<MinigamesProps> = ({ roomData, userId }) => {
   const isHost = roomData.hostId === userId;
-  const isLoser = roomData.currentLoserId === userId;
-  const isOpponent = roomData.targetOpponentId === userId;
-  const isParticipant = isLoser || isOpponent;
+  const challengerId = roomData.currentLoserId!;
+  const defenderId = roomData.targetOpponentId!;
+  const challenger = roomData.players[challengerId];
+  const defender = roomData.players[defenderId];
   
-  const [selection, setSelection] = useState<any>(null);
-  const [status, setStatus] = useState('Đang bắt đầu...');
-  const [showLaw, setShowLaw] = useState(false);
+  const isPlayer = userId === challengerId || userId === defenderId;
 
-  // RPS State
-  const [rpsChoice, setRpsChoice] = useState<string | null>(null);
-
-  // Fast Hands State
-  const [fastTarget, setFastTarget] = useState(false);
-  const [startTime, setStartTime] = useState(0);
-
+  // --- LOGIC TRỌNG TÀI (Host sẽ chạy đoạn này) ---
   useEffect(() => {
-    if (roomData.minigameType === MinigameType.FAST_HANDS && isParticipant) {
-        const timer = setTimeout(() => {
-            setFastTarget(true);
-            setStartTime(Date.now());
-        }, 2000 + Math.random() * 3000);
-        return () => clearTimeout(timer);
+    if (!isHost) return; // Chỉ chủ phòng mới được tính điểm để tránh lỗi đè dữ liệu
+
+    const p1Move = challenger?.minigameMove;
+    const p2Move = defender?.minigameMove;
+
+    // 1. GAME OẲN TÙ TÌ (Cả 2 phải cùng ra)
+    if (roomData.minigameType === MinigameType.RPS) {
+      if (p1Move && p2Move) {
+        // Cả 2 đã chọn xong -> Tính kết quả
+        let winnerId: string | null = null;
+        
+        if (p1Move === p2Move) {
+          // HÒA -> Reset lượt chơi
+          setTimeout(() => {
+             // Xóa nước đi để chơi lại
+             const updates: any = {};
+             updates[`players/${challengerId}/minigameMove`] = null;
+             updates[`players/${defenderId}/minigameMove`] = null;
+             updateRoom(roomData.id, updates);
+          }, 2000); // Chờ 2s cho người chơi xem mình vừa ra gì rồi mới reset
+          return;
+        }
+
+        // Logic thắng thua: R (Búa) > S (Kéo) > P (Bao) > R
+        if (
+          (p1Move === 'rock' && p2Move === 'scissors') ||
+          (p1Move === 'scissors' && p2Move === 'paper') ||
+          (p1Move === 'paper' && p2Move === 'rock')
+        ) {
+          winnerId = challengerId; // Người thách đấu thắng
+        } else {
+          winnerId = defenderId; // Người bị thách thắng
+        }
+
+        // Cập nhật kết quả cuối cùng
+        finishGame(winnerId);
+      }
     }
-  }, [roomData.minigameType, isParticipant]);
 
-  const handleRps = async (choice: string) => {
-      if (rpsChoice || !isParticipant) return;
-      setRpsChoice(choice);
-      const updates: any = {};
-      updates[`players/${userId}/minigameAction`] = choice;
-      await updateRoom(roomData.id, updates);
-      
-      // Check if both played
-      const loser = roomData.players[roomData.currentLoserId!];
-      const opponent = roomData.players[roomData.targetOpponentId!];
-      if (loser.minigameAction && opponent.minigameAction) {
-          if (!isHost) return;
-          // Determine winner
-          const l = loser.minigameAction;
-          const o = opponent.minigameAction;
-          let winnerId = '';
-          if (l === o) { // Tie - redo (not implemented for simplicity, just pick one)
-            winnerId = Math.random() > 0.5 ? loser.id : opponent.id;
-          } else if ((l === 'Búa' && o === 'Kéo') || (l === 'Kéo' && o === 'Giấy') || (l === 'Giấy' && o === 'Búa')) {
-            winnerId = opponent.id; // Loser wins the duel -> Opponent drinks
-          } else {
-            winnerId = loser.id; // Opponent wins duel -> Loser drinks
-          }
-          finishDuel(winnerId);
-      }
+    // 2. GAME NHANH TAY (Ai bấm trước người đó thắng)
+    if (roomData.minigameType === MinigameType.FAST_HANDS) {
+       // Chỉ cần 1 người bấm là thắng luôn
+       if (p1Move) finishGame(challengerId);
+       else if (p2Move) finishGame(defenderId);
+    }
+
+  }, [roomData, isHost]); // Chạy lại mỗi khi data phòng thay đổi
+
+  // Hàm kết thúc game và chuyển sang màn hình phạt bia
+  const finishGame = (winnerId: string) => {
+    const isChallengerWon = winnerId === challengerId;
+    
+    // Nếu Người thách đấu thắng: Đối thủ uống 100% (hoặc số lượng tùy chỉnh)
+    // Nếu Người thách đấu thua: Phải uống gấp đôi (Phạt tội "gáy sớm")
+    const loserId = isChallengerWon ? defenderId : challengerId;
+    const amount = isChallengerWon ? 1 : 2; // Ví dụ: Thua thường 1 ly, Thua ngược 2 ly
+
+    updateRoom(roomData.id, {
+        state: GameState.RESULT,
+        winnerId: loserId, // Lưu ý: Biến này tên là winnerId nhưng logic hiển thị ở GameBoard đang dùng nó như là "Người phải uống" (Loser)
+        winnerBeerAmount: amount
+    });
   };
 
-  const handleFastClick = async () => {
-      if (!fastTarget || !isParticipant) return;
-      const reaction = Date.now() - startTime;
-      const winnerId = isLoser ? roomData.targetOpponentId : roomData.currentLoserId; // The one who clicked is the winner of the duel
-      finishDuel(winnerId!);
+  // --- GỬI HÀNH ĐỘNG ---
+  const sendMove = (move: string) => {
+    if (!isPlayer) return;
+    // Gửi nước đi lên Firebase
+    updateRoom(roomData.id, {
+        [`players/${userId}/minigameMove`]: move
+    });
   };
 
-  const finishDuel = async (drinkerId: string) => {
-      if (!isHost) return;
-      // Logic: 
-      // If Loser (Challenger) loses duel (drinkerId === roomData.currentLoserId), double penalty (2 ly)
-      // If Opponent (Target) loses duel (drinkerId === roomData.targetOpponentId), original penalty (1 ly)
-      const isChallengerLost = drinkerId === roomData.currentLoserId;
-      const amount = isChallengerLost ? 2 : 1;
-      
-      await updateRoom(roomData.id, {
-          state: GameState.RESULT,
-          winnerId: drinkerId,
-          winnerBeerAmount: amount
-      });
-  };
+  // --- GIAO DIỆN ---
+  
+  // 1. Giao diện Oẳn Tù Tì
+  if (roomData.minigameType === MinigameType.RPS) {
+    const myMove = roomData.players[userId]?.minigameMove;
+    // Kiểm tra xem đối phương đã chọn chưa (để hiện trạng thái chờ)
+    const opponentId = userId === challengerId ? defenderId : challengerId;
+    const opponentHasMoved = !!roomData.players[opponentId]?.minigameMove;
 
-  const renderGame = () => {
-      switch(roomData.minigameType) {
-          case MinigameType.RPS:
-              return (
-                  <div className="space-y-8 text-center">
-                      <h3 className="text-2xl font-bold flex items-center justify-center gap-2">
-                        <Hand className="text-indigo-400" /> Oẳn tù tì
-                      </h3>
-                      {isParticipant ? (
-                          <div className="grid grid-cols-3 gap-4">
-                              {['Búa', 'Bao', 'Kéo'].map(choice => (
-                                  <button 
-                                    key={choice}
-                                    onClick={() => handleRps(choice)}
-                                    className={`p-6 rounded-2xl border-2 transition-all font-bold text-lg
-                                        ${rpsChoice === choice ? 'bg-indigo-600 border-white' : 'bg-slate-900 border-indigo-500/50 hover:bg-slate-800'}
-                                    `}
-                                  >
-                                      {choice}
-                                  </button>
-                              ))}
-                          </div>
-                      ) : (
-                          <p className="text-slate-400">Cuộc đấu đang diễn ra giữa {roomData.players[roomData.currentLoserId!].name} và {roomData.players[roomData.targetOpponentId!].name}</p>
-                      )}
-                  </div>
-              );
-          case MinigameType.FAST_HANDS:
-              return (
-                  <div className="space-y-8 text-center">
-                       <h3 className="text-2xl font-bold flex items-center justify-center gap-2">
-                        <Zap className="text-yellow-400" /> Nhanh tay lẹ mắt
-                      </h3>
-                      {isParticipant ? (
-                          <button 
-                            onClick={handleFastClick}
-                            className={`w-full aspect-video rounded-3xl border-4 transition-all flex items-center justify-center text-3xl font-bungee
-                                ${fastTarget ? 'bg-emerald-600 border-emerald-400 shadow-[0_0_50px_rgba(16,185,129,0.4)]' : 'bg-rose-600 border-rose-400 cursor-not-allowed'}
-                            `}
-                          >
-                              {fastTarget ? 'BẤM NGAY!!!' : 'CHỜ ĐÃ...'}
-                          </button>
-                      ) : (
-                        <p className="text-slate-400 italic">Đang chờ 2 đối thủ so găng tốc độ...</p>
-                      )}
-                  </div>
-              );
-          case MinigameType.MEMORY:
-              return (
-                  <div className="space-y-4 text-center">
-                       <h3 className="text-2xl font-bold flex items-center justify-center gap-2">
-                        <Brain className="text-purple-400" /> Lật thẻ may mắn
-                      </h3>
-                      <p className="text-slate-400">Hệ thống đang bốc thăm người thắng...</p>
-                      {isHost && (
-                          <button 
-                            onClick={() => finishDuel(Math.random() > 0.5 ? roomData.currentLoserId! : roomData.targetOpponentId!)}
-                            className="px-6 py-2 bg-purple-600 rounded-xl"
-                          >
-                              KẾT QUẢ NGẪU NHIÊN
-                          </button>
-                      )}
-                  </div>
-              )
-          default: return null;
-      }
-  };
-
-  return (
-    <div className="max-w-xl mx-auto space-y-8 animate-in zoom-in">
-        <div className="glass p-8 rounded-3xl space-y-6 bg-gradient-to-tr from-slate-900 to-indigo-900/40">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                <Swords className="text-indigo-400" size={32} />
-                <h2 className="text-2xl font-bungee">TỬ CHIẾN</h2>
-                <button 
-                    onClick={() => setShowLaw(!showLaw)}
-                    className="p-2 bg-slate-800 rounded-full hover:bg-slate-700 transition-colors"
-                >
-                    <HelpCircle size={20} />
-                </button>
+    return (
+        <div className="flex flex-col items-center gap-8 animate-in fade-in w-full">
+            <h2 className="text-3xl font-bungee text-indigo-400">OẲN TÙ TÌ</h2>
+            <div className="flex justify-between w-full max-w-lg px-4">
+                 <div className="text-center">
+                    <p className="font-bold text-rose-400">{challenger.name}</p>
+                    <p className="text-sm text-slate-400">(Thách đấu)</p>
+                    {challenger.minigameMove && <div className="mt-2 text-2xl">✅ Đã chọn</div>}
+                 </div>
+                 <div className="text-4xl font-bungee">VS</div>
+                 <div className="text-center">
+                    <p className="font-bold text-indigo-400">{defender.name}</p>
+                    <p className="text-sm text-slate-400">(Phòng thủ)</p>
+                    {defender.minigameMove && <div className="mt-2 text-2xl">✅ Đã chọn</div>}
+                 </div>
             </div>
 
-            {showLaw && (
-                <div className="p-4 bg-black/40 rounded-2xl text-xs space-y-2 border border-white/5 animate-in slide-in-from-top">
-                    <p className="font-bold text-amber-500">LUẬT CHƠI:</p>
-                    <ul className="list-disc pl-4 text-slate-300">
-                        <li>Kẻ thua cuộc ban đầu là <b>Người thách đấu</b>.</li>
-                        <li>Người thách đấu thắng: Đối thủ uống <b>1 LY</b>.</li>
-                        <li>Người thách đấu thua: Phải uống gấp đôi (<b>2 LY</b>).</li>
-                    </ul>
-                </div>
+            {isPlayer ? (
+                myMove ? (
+                    <div className="text-xl text-yellow-400 animate-pulse mt-8">
+                        {opponentHasMoved ? "Đang tính kết quả..." : "Đang chờ đối thủ..."}
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-3 gap-4 mt-8">
+                        <button onClick={() => sendMove('rock')} className="w-24 h-24 bg-slate-800 rounded-full text-5xl hover:bg-slate-700 hover:scale-110 transition-all border-4 border-slate-600">✊</button>
+                        <button onClick={() => sendMove('paper')} className="w-24 h-24 bg-slate-800 rounded-full text-5xl hover:bg-slate-700 hover:scale-110 transition-all border-4 border-slate-600">✋</button>
+                        <button onClick={() => sendMove('scissors')} className="w-24 h-24 bg-slate-800 rounded-full text-5xl hover:bg-slate-700 hover:scale-110 transition-all border-4 border-slate-600">✌️</button>
+                    </div>
+                )
+            ) : (
+                <p className="text-slate-500 mt-10">Khán giả vui lòng trật tự...</p>
             )}
-
-            <div className="flex items-center justify-around py-4">
-                <div className="text-center space-y-2">
-                    <div className="w-16 h-16 bg-rose-600 rounded-full flex items-center justify-center font-bold border-4 border-rose-400">VS</div>
-                    <p className="font-bold text-rose-500">{roomData.players[roomData.currentLoserId!].name}</p>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-tighter">Thách đấu</p>
-                </div>
-                <div className="text-center space-y-2">
-                    <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center font-bold border-4 border-slate-600">?</div>
-                    <p className="font-bold">{roomData.players[roomData.targetOpponentId!].name}</p>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-tighter">Bị chọn</p>
-                </div>
-            </div>
-
-            {renderGame()}
         </div>
-    </div>
-  );
+    );
+  }
+
+  // 2. Giao diện Nhanh Tay (Ai bấm trước thắng)
+  if (roomData.minigameType === MinigameType.FAST_HANDS) {
+      return (
+        <div className="flex flex-col items-center gap-8 animate-in fade-in w-full">
+            <h2 className="text-3xl font-bungee text-yellow-500">NHANH TAY LẸ MẮT</h2>
+            <p className="text-slate-300">Bấm nút bên dưới ngay khi nó hiện lên!</p>
+            
+            <div className="relative h-64 w-full max-w-md bg-slate-900 rounded-3xl overflow-hidden border border-slate-700 flex items-center justify-center">
+                {isPlayer ? (
+                    <button 
+                        onClick={() => sendMove(Date.now().toString())}
+                        className="w-32 h-32 bg-red-600 rounded-full shadow-[0_0_50px_rgba(220,38,38,0.6)] animate-bounce active:scale-90 transition-transform flex items-center justify-center"
+                    >
+                        <Zap size={48} className="text-white" />
+                    </button>
+                ) : (
+                    <div className="text-slate-500">Đang xem 2 đấu thủ thi đấu...</div>
+                )}
+            </div>
+        </div>
+      );
+  }
+
+  // Fallback cho game chưa làm
+  return <div className="text-center text-slate-400">Game này đang phát triển...</div>;
 };
 
 export default Minigames;
